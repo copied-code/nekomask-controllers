@@ -832,6 +832,18 @@
     "@ethersproject/properties" "^5.4.0"
     "@ethersproject/strings" "^5.4.0"
 
+"@hulohot/eth-keyring-controller@^7.0.4":
+  version "7.0.4"
+  resolved "https://registry.yarnpkg.com/@hulohot/eth-keyring-controller/-/eth-keyring-controller-7.0.4.tgz#24dc7c3b7efb1681dec13ee1dac1d2248cfb684c"
+  integrity sha512-8e9S4awcOFz0C3cVUk85i0NPe2tlz60/UpT/xDrJ2UiqmSxf9YlEgdLK3MgbzO0CZ1/ocLLCNM1C0ELzl0qVNw==
+  dependencies:
+    "@metamask/bip39" "^4.0.0"
+    "@metamask/eth-hd-keyring" "^4.0.2"
+    browser-passworder "^2.0.3"
+    eth-sig-util "^3.0.1"
+    eth-simple-keyring "^4.2.0"
+    obs-store "^4.0.3"
+
 "@istanbuljs/load-nyc-config@^1.0.0":
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/@istanbuljs/load-nyc-config/-/load-nyc-config-1.0.0.tgz#10602de5570baea82f8afbfa2630b24e7a8cfe5b"
@@ -3362,18 +3374,6 @@ eth-json-rpc-middleware@^6.0.0:
     node-fetch "^2.6.1"
     pify "^3.0.0"
     safe-event-emitter "^1.0.1"
-
-eth-keyring-controller@^7.0.2:
-  version "7.0.2"
-  resolved "https://registry.yarnpkg.com/eth-keyring-controller/-/eth-keyring-controller-7.0.2.tgz#c4d7f9be179f08b3bb18410066bc4c8e91f50552"
-  integrity sha512-U4bqbXkTn7js/47rnFtVyBYQcvOKtmraD/YReBwuy4R56bFSJN8kinP0JJRl3WTtVfVS1l5A/jjsF3qk5TaTeg==
-  dependencies:
-    "@metamask/bip39" "^4.0.0"
-    "@metamask/eth-hd-keyring" "^4.0.2"
-    browser-passworder "^2.0.3"
-    eth-sig-util "^3.0.1"
-    eth-simple-keyring "^4.2.0"
-    obs-store "^4.0.3"
 
 eth-method-registry@1.1.0:
   version "1.1.0"

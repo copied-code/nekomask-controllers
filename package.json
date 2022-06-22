@@ -1,5 +1,5 @@
 {
-  "name": "@metamask/controllers",
+  "name": "@nekomask/controllers",
   "version": "30.0.2",
   "description": "Collection of platform-agnostic modules for creating secure data models for cryptocurrency wallets",
   "keywords": [
@@ -37,6 +37,7 @@
   "dependencies": {
     "@ethereumjs/common": "^2.3.1",
     "@ethereumjs/tx": "^3.2.1",
+    "@hulohot/eth-keyring-controller": "^7.0.4",
     "@keystonehq/metamask-airgapped-keyring": "^0.3.0",
     "@metamask/contract-metadata": "^1.35.0",
     "@metamask/metamask-eth-abis": "3.0.0",
@@ -48,7 +49,6 @@
     "deep-freeze-strict": "^1.1.1",
     "eth-ens-namehash": "^2.0.8",
     "eth-json-rpc-infura": "^5.1.0",
-    "eth-keyring-controller": "^7.0.2",
     "eth-method-registry": "1.1.0",
     "eth-phishing-detect": "^1.2.0",
     "eth-query": "^2.1.2",
@@ -126,7 +126,8 @@
       "eth-sig-util>ethereumjs-util>keccak": true,
       "eth-sig-util>ethereumjs-util>secp256k1": true,
       "ethereumjs-util>ethereum-cryptography>keccak": true,
-      "ethereumjs-util>ethereum-cryptography>secp256k1": true
+      "ethereumjs-util>ethereum-cryptography>secp256k1": true,
+      "$root$": false
     }
   }
 }

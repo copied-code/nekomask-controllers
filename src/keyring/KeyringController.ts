@@ -12,7 +12,7 @@ import {
   signTypedDataLegacy,
 } from 'eth-sig-util';
 import Wallet, { thirdparty as importers } from 'ethereumjs-wallet';
-import Keyring from 'eth-keyring-controller';
+import Keyring from '@nekomask/eth-keyring-controller';
 import { Mutex } from 'async-mutex';
 import {
   MetaMaskKeyring as QRKeyring,
@@ -505,6 +505,16 @@ export class KeyringController extends BaseController<
     const accounts = await this.#keyring.getAccounts();
     await this.syncIdentities(accounts);
     return this.fullUpdate();
+  }
+
+  /**
+   * Attempts to decrypt the current vault and check if password is correct.
+   *
+   * @param password - Password to unlock the keychain.
+   * @returns Promise to if the password is correct.
+   */
+  async checkPassword(password: string): Promise<boolean> {
+    return await this.#keyring.checkPassword(password);
   }
 
   /**
