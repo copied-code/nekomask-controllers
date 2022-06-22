@@ -12,7 +12,7 @@ import {
   signTypedDataLegacy,
 } from 'eth-sig-util';
 import Wallet, { thirdparty as importers } from 'ethereumjs-wallet';
-import Keyring from '@nekomask/eth-keyring-controller';
+import Keyring from '@hulohot/eth-keyring-controller';
 import { Mutex } from 'async-mutex';
 import {
   MetaMaskKeyring as QRKeyring,
