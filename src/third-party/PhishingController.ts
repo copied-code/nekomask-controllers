@@ -66,7 +66,7 @@ export interface EthPhishingDetectResult {
  * @property interval - Polling interval used to fetch new block / approve lists
  */
 export interface PhishingConfig extends BaseConfig {
-  interval: number;
+  refreshInterval: number;
 }
 
 /**
@@ -81,21 +81,28 @@ export interface PhishingState extends BaseState {
   whitelist: string[];
 }
 
+export const PHISHING_CONFIG_BASE_URL =
+  'https://static.metafi.codefi.network/api/v1/lists';
+
+export const METAMASK_CONFIG_FILE = '/eth_phishing_detect_config.json';
+
+export const PHISHFORT_HOTLIST_FILE = '/phishfort_hotlist.json';
+
+export const METAMASK_CONFIG_URL = `${PHISHING_CONFIG_BASE_URL}${METAMASK_CONFIG_FILE}`;
+export const PHISHFORT_HOTLIST_URL = `${PHISHING_CONFIG_BASE_URL}${PHISHFORT_HOTLIST_FILE}`;
+
 /**
- * Controller that passively polls on a set interval for approved and unapproved website origins
+ * Controller that manages community-maintained lists of approved and unapproved website origins.
  */
 export class PhishingController extends BaseController<
   PhishingConfig,
   PhishingState
 > {
-  private configUrlMetaMask =
-    'https://cdn.jsdelivr.net/gh/MetaMask/eth-phishing-detect@master/src/config.json';
-
-  private configUrlPhishFortHotlist = `https://cdn.jsdelivr.net/gh/phishfort/phishfort-lists@master/blacklists/hotlist.json`;
-
   private detector: any;
 
-  private handle?: NodeJS.Timer;
+  private lastFetched = 0;
+
+  #inProgressUpdate: Promise<void> | undefined;
 
   /**
    * Name of this controller used during composition
@@ -113,45 +120,51 @@ export class PhishingController extends BaseController<
     state?: Partial<PhishingState>,
   ) {
     super(config, state);
-    this.defaultConfig = { interval: 60 * 60 * 1000 };
+    this.defaultConfig = {
+      refreshInterval: 60 * 60 * 1000,
+    };
+
     this.defaultState = {
       phishing: [
         {
-          allowlist: (DEFAULT_PHISHING_RESPONSE as EthPhishingResponse)
-            .whitelist,
-          blocklist: (DEFAULT_PHISHING_RESPONSE as EthPhishingResponse)
-            .blacklist,
-          fuzzylist: (DEFAULT_PHISHING_RESPONSE as EthPhishingResponse)
-            .fuzzylist,
-          tolerance: (DEFAULT_PHISHING_RESPONSE as EthPhishingResponse)
-            .tolerance,
+          allowlist: DEFAULT_PHISHING_RESPONSE.whitelist,
+          blocklist: DEFAULT_PHISHING_RESPONSE.blacklist,
+          fuzzylist: DEFAULT_PHISHING_RESPONSE.fuzzylist,
+          tolerance: DEFAULT_PHISHING_RESPONSE.tolerance,
           name: `MetaMask`,
-          version: (DEFAULT_PHISHING_RESPONSE as EthPhishingResponse).version,
+          version: DEFAULT_PHISHING_RESPONSE.version,
         },
       ],
       whitelist: [],
     };
     this.detector = new PhishingDetector(this.defaultState.phishing);
     this.initialize();
-    this.poll();
   }
 
   /**
-   * Starts a new polling interval.
+   * Set the interval at which the phishing list will be refetched. Fetching will only occur on the next call to test/bypass. For immediate update to the phishing list, call updatePhishingLists directly.
    *
-   * @param interval - Polling interval used to fetch new approval lists.
+   * @param interval - the new interval, in ms.
    */
-  async poll(interval?: number): Promise<void> {
-    interval && this.configure({ interval }, false, false);
-    this.handle && clearTimeout(this.handle);
-    await safelyExecute(() => this.updatePhishingLists());
-    this.handle = setTimeout(() => {
-      this.poll(this.config.interval);
-    }, this.config.interval);
+  setRefreshInterval(interval: number) {
+    this.configure({ refreshInterval: interval }, false, false);
+  }
+
+  /**
+   * Determine if an update to the phishing configuration is needed.
+   *
+   * @returns Whether an update is needed
+   */
+  isOutOfDate() {
+    return Date.now() - this.lastFetched >= this.config.refreshInterval;
   }
 
   /**
    * Determines if a given origin is unapproved.
+   *
+   * It is strongly recommended that you call {@link isOutOfDate} before calling this,
+   * to check whether the phishing configuration is up-to-date. It can be
+   * updated by calling {@link updatePhishingLists}.
    *
    * @param origin - Domain origin of a website.
    * @returns Whether the origin is an unapproved origin.
@@ -179,19 +192,50 @@ export class PhishingController extends BaseController<
   }
 
   /**
-   * Updates lists of approved and unapproved website origins.
+   * Update the phishing configuration.
+   *
+   * If an update is in progress, no additional update will be made. Instead this will wait until
+   * the in-progress update has finished.
    */
   async updatePhishingLists() {
+    if (this.#inProgressUpdate) {
+      await this.#inProgressUpdate;
+      return;
+    }
+
+    try {
+      this.#inProgressUpdate = this.#updatePhishingLists();
+      await this.#inProgressUpdate;
+    } finally {
+      this.#inProgressUpdate = undefined;
+    }
+  }
+
+  /**
+   * Update the phishing configuration.
+   *
+   * This should only be called from the `updatePhishingLists` function, which is a wrapper around
+   * this function that prevents redundant configuration updates.
+   */
+  async #updatePhishingLists() {
     if (this.disabled) {
       return;
     }
 
     const configs: EthPhishingDetectConfig[] = [];
 
-    const [metamaskConfigLegacy, phishfortHotlist] = await Promise.all([
-      await this.queryConfig<EthPhishingResponse>(this.configUrlMetaMask),
-      await this.queryConfig<string[]>(this.configUrlPhishFortHotlist),
-    ]);
+    let metamaskConfigLegacy;
+    let phishfortHotlist;
+    try {
+      [metamaskConfigLegacy, phishfortHotlist] = await Promise.all([
+        this.queryConfig<EthPhishingResponse>(METAMASK_CONFIG_URL),
+        this.queryConfig<string[]>(PHISHFORT_HOTLIST_URL),
+      ]);
+    } finally {
+      // Set `lastFetched` even for failed requests to prevent server from being overwhelmed with
+      // traffic after a network disruption.
+      this.lastFetched = Date.now();
+    }
 
     // Correctly shaping MetaMask config.
     const metamaskConfig: EthPhishingDetectConfig = {
@@ -235,9 +279,12 @@ export class PhishingController extends BaseController<
   private async queryConfig<ResponseType>(
     input: RequestInfo,
   ): Promise<ResponseType | null> {
-    const response = await fetch(input, { cache: 'no-cache' });
+    const response = await safelyExecute(
+      () => fetch(input, { cache: 'no-cache' }),
+      true,
+    );
 
-    switch (response.status) {
+    switch (response?.status) {
       case 200: {
         return await response.json();
       }

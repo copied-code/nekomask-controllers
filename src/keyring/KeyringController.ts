@@ -123,7 +123,13 @@ export enum SignTypedDataVersion {
 }
 
 /**
- * Controller responsible for establishing and managing user identity
+ * Controller responsible for establishing and managing user identity.
+ *
+ * This class is a wrapper around the `eth-keyring-controller` package. The
+ * `eth-keyring-controller` manages the "vault", which is an encrypted store of private keys, and
+ * it manages the wallet "lock" state. This wrapper class has convenience methods for interacting
+ * with the internal keyring controller and handling certain complex operations that involve the
+ * keyrings.
  */
 export class KeyringController extends BaseController<
   KeyringConfig,
@@ -283,6 +289,16 @@ export class KeyringController extends BaseController<
   }
 
   /**
+   * Method to validate a password against the password from the keyring.
+   *
+   * @param password - Password of the keyring.
+   * @returns Boolean indicating if input password is valid
+   */
+  validatePassword(password: string): boolean {
+    return this.#keyring.password === password;
+  }
+
+  /**
    * Returns the status of the vault.
    *
    * @returns Boolean returning true if the vault is unlocked.
@@ -298,7 +314,7 @@ export class KeyringController extends BaseController<
    * @returns Promise resolving to the seed phrase.
    */
   exportSeedPhrase(password: string) {
-    if (this.#keyring.password === password) {
+    if (this.validatePassword(password)) {
       return this.#keyring.keyrings[0].mnemonic;
     }
     throw new Error('Invalid password');
@@ -312,7 +328,7 @@ export class KeyringController extends BaseController<
    * @returns Promise resolving to the private key for an address.
    */
   exportAccount(password: string, address: string): Promise<string> {
-    if (this.#keyring.password === password) {
+    if (this.validatePassword(password)) {
       return this.#keyring.exportAccount(address);
     }
     throw new Error('Invalid password');

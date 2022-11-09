@@ -5,7 +5,11 @@ import { BaseController } from '../BaseControllerV2';
 import type { RestrictedControllerMessenger } from '../ControllerMessenger';
 import { safelyExecute, isTokenListSupportedForNetwork } from '../util';
 import { fetchTokenList } from '../apis/token-service';
-import { NetworkState } from '../network/NetworkController';
+import {
+  NetworkControllerProviderChangeEvent,
+  NetworkState,
+  ProviderConfig,
+} from '../network/NetworkController';
 import { formatAggregatorNames, formatIconUrlWithProxy } from './assetsUtil';
 
 const DEFAULT_INTERVAL = 24 * 60 * 60 * 1000;
@@ -36,6 +40,7 @@ type TokensChainsCache = {
 export type TokenListState = {
   tokenList: TokenListMap;
   tokensChainsCache: TokensChainsCache;
+  preventPollingOnNetworkRestart: boolean;
 };
 
 export type TokenListStateChange = {
@@ -51,19 +56,21 @@ export type GetTokenListState = {
 type TokenListMessenger = RestrictedControllerMessenger<
   typeof name,
   GetTokenListState,
-  TokenListStateChange,
+  TokenListStateChange | NetworkControllerProviderChangeEvent,
   never,
-  TokenListStateChange['type']
+  TokenListStateChange['type'] | NetworkControllerProviderChangeEvent['type']
 >;
 
 const metadata = {
   tokenList: { persist: true, anonymous: true },
   tokensChainsCache: { persist: true, anonymous: true },
+  preventPollingOnNetworkRestart: { persist: true, anonymous: true },
 };
 
 const defaultState: TokenListState = {
   tokenList: {},
   tokensChainsCache: {},
+  preventPollingOnNetworkRestart: false,
 };
 
 /**
@@ -96,9 +103,11 @@ export class TokenListController extends BaseController<
    * @param options.cacheRefreshThreshold - The token cache expiry time, in milliseconds.
    * @param options.messenger - A restricted controller messenger.
    * @param options.state - Initial state to set on this controller.
+   * @param options.preventPollingOnNetworkRestart - Determines whether to prevent poilling on network restart in extension.
    */
   constructor({
     chainId,
+    preventPollingOnNetworkRestart = false,
     onNetworkStateChange,
     interval = DEFAULT_INTERVAL,
     cacheRefreshThreshold = DEFAULT_THRESHOLD,
@@ -106,8 +115,9 @@ export class TokenListController extends BaseController<
     state,
   }: {
     chainId: string;
-    onNetworkStateChange: (
-      listener: (networkState: NetworkState) => void,
+    preventPollingOnNetworkRestart?: boolean;
+    onNetworkStateChange?: (
+      listener: (networkState: NetworkState | ProviderConfig) => void,
     ) => void;
     interval?: number;
     cacheRefreshThreshold?: number;
@@ -123,12 +133,46 @@ export class TokenListController extends BaseController<
     this.intervalDelay = interval;
     this.cacheRefreshThreshold = cacheRefreshThreshold;
     this.chainId = chainId;
+    this.updatePreventPollingOnNetworkRestart(preventPollingOnNetworkRestart);
     this.abortController = new AbortController();
-    onNetworkStateChange(async (networkState) => {
-      if (this.chainId !== networkState.provider.chainId) {
-        this.abortController.abort();
-        this.abortController = new AbortController();
-        this.chainId = networkState.provider.chainId;
+    if (onNetworkStateChange) {
+      onNetworkStateChange(async (networkStateOrProviderConfig) => {
+        // this check for "provider" is for testing purposes, since in the extension this callback will receive
+        // an object typed as NetworkState but within repo we can only simulate as if the callback receives an
+        // object typed as ProviderConfig
+        if ('provider' in networkStateOrProviderConfig) {
+          await this.#onNetworkStateChangeCallback(
+            networkStateOrProviderConfig.provider,
+          );
+        } else {
+          await this.#onNetworkStateChangeCallback(
+            networkStateOrProviderConfig,
+          );
+        }
+      });
+    } else {
+      this.messagingSystem.subscribe(
+        'NetworkController:providerChange',
+        async (providerConfig) => {
+          await this.#onNetworkStateChangeCallback(providerConfig);
+        },
+      );
+    }
+  }
+
+  /**
+   * Updates state and restart polling when updates are received through NetworkController subscription.
+   *
+   * @param providerConfig - the configuration for a provider containing critical network info.
+   */
+  async #onNetworkStateChangeCallback(providerConfig: ProviderConfig) {
+    if (this.chainId !== providerConfig.chainId) {
+      this.abortController.abort();
+      this.abortController = new AbortController();
+      this.chainId = providerConfig.chainId;
+      if (this.state.preventPollingOnNetworkRestart) {
+        this.clearingTokenListData();
+      } else {
         // Ensure tokenList is referencing data from correct network
         this.update(() => {
           return {
@@ -138,7 +182,7 @@ export class TokenListController extends BaseController<
         });
         await this.restart();
       }
-    });
+    }
   }
 
   /**
@@ -218,6 +262,7 @@ export class TokenListController extends BaseController<
 
           this.update(() => {
             return {
+              ...this.state,
               tokenList,
               tokensChainsCache,
             };
@@ -264,6 +309,7 @@ export class TokenListController extends BaseController<
       };
       this.update(() => {
         return {
+          ...this.state,
           tokenList,
           tokensChainsCache: updatedTokensChainsCache,
         };
@@ -291,6 +337,33 @@ export class TokenListController extends BaseController<
       return dataCache.data;
     }
     return null;
+  }
+
+  /**
+   * Clearing tokenList and tokensChainsCache explicitly.
+   */
+  clearingTokenListData(): void {
+    this.update(() => {
+      return {
+        ...this.state,
+        tokenList: {},
+        tokensChainsCache: {},
+      };
+    });
+  }
+
+  /**
+   * Updates preventPollingOnNetworkRestart from extension.
+   *
+   * @param shouldPreventPolling - Determine whether to prevent polling on network change
+   */
+  updatePreventPollingOnNetworkRestart(shouldPreventPolling: boolean): void {
+    this.update(() => {
+      return {
+        ...this.state,
+        preventPollingOnNetworkRestart: shouldPreventPolling,
+      };
+    });
   }
 }
 

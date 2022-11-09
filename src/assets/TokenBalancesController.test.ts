@@ -1,7 +1,11 @@
 import sinon from 'sinon';
 import { BN } from 'ethereumjs-util';
-import { NetworkController } from '../network/NetworkController';
+import {
+  NetworkController,
+  NetworkControllerMessenger,
+} from '../network/NetworkController';
 import { PreferencesController } from '../user/PreferencesController';
+import { ControllerMessenger } from '../ControllerMessenger';
 import { TokensController } from './TokensController';
 import { Token } from './TokenRatesController';
 import { AssetsContractController } from './AssetsContractController';
@@ -9,6 +13,14 @@ import {
   BN as exportedBn,
   TokenBalancesController,
 } from './TokenBalancesController';
+
+const stubCreateEthers = (ctrl: TokensController, res: boolean) => {
+  return sinon.stub(ctrl, '_createEthersContract').callsFake(() => {
+    return {
+      supportsInterface: sinon.stub().returns(res),
+    } as any;
+  });
+};
 
 describe('TokenBalancesController', () => {
   const getToken = (
@@ -107,12 +119,28 @@ describe('TokenBalancesController', () => {
     });
   });
 
-  it('should update all balances', async () => {
-    const network = new NetworkController();
+  const setupControllers = () => {
+    const messenger: NetworkControllerMessenger =
+      new ControllerMessenger().getRestricted({
+        name: 'NetworkController',
+        allowedEvents: ['NetworkController:stateChange'],
+        allowedActions: [],
+      });
+
+    new NetworkController({
+      messenger,
+      infuraProjectId: 'potato',
+    });
     const preferences = new PreferencesController();
+    return { messenger, preferences };
+  };
+
+  it('should update all balances', async () => {
+    const { messenger, preferences } = setupControllers();
     const assets = new TokensController({
       onPreferencesStateChange: (listener) => preferences.subscribe(listener),
-      onNetworkStateChange: (listener) => network.subscribe(listener),
+      onNetworkStateChange: (listener) =>
+        messenger.subscribe('NetworkController:stateChange', listener),
     });
     const address = '0x86fa049857e0209aa7d9e616f7eb3b3b78ecfdb0';
     const tokenBalances = new TokenBalancesController(
@@ -138,14 +166,16 @@ describe('TokenBalancesController', () => {
     expect(
       tokenBalances.state.contractBalances[address].toNumber(),
     ).toBeGreaterThan(0);
+
+    messenger.clearEventSubscriptions('NetworkController:stateChange');
   });
 
   it('should handle `getERC20BalanceOf` error case', async () => {
-    const network = new NetworkController();
-    const preferences = new PreferencesController();
+    const { messenger, preferences } = setupControllers();
     const assets = new TokensController({
       onPreferencesStateChange: (listener) => preferences.subscribe(listener),
-      onNetworkStateChange: (listener) => network.subscribe(listener),
+      onNetworkStateChange: (listener) =>
+        messenger.subscribe('NetworkController:stateChange', listener),
     });
     const errorMsg = 'Failed to get balance';
     const address = '0x86fa049857e0209aa7d9e616f7eb3b3b78ecfdb0';
@@ -183,31 +213,28 @@ describe('TokenBalancesController', () => {
     expect(
       tokenBalances.state.contractBalances[address].toNumber(),
     ).toBeGreaterThan(0);
+
+    messenger.clearEventSubscriptions('NetworkController:stateChange');
   });
 
   it('should subscribe to new sibling assets controllers', async () => {
-    const network = new NetworkController();
-    const preferences = new PreferencesController();
+    const { messenger, preferences } = setupControllers();
     const assetsContract = new AssetsContractController({
       onPreferencesStateChange: (listener) => preferences.subscribe(listener),
-      onNetworkStateChange: (listener) => network.subscribe(listener),
+      onNetworkStateChange: (listener) =>
+        messenger.subscribe('NetworkController:stateChange', listener),
     });
     const tokensController = new TokensController({
       onPreferencesStateChange: (listener) => preferences.subscribe(listener),
-      onNetworkStateChange: (listener) => network.subscribe(listener),
+      onNetworkStateChange: (listener) =>
+        messenger.subscribe('NetworkController:stateChange', listener),
     });
 
-    const supportsInterfaceStub = sinon.stub().returns(Promise.resolve(false));
-
-    sinon
-      .stub(tokensController, '_createEthersContract')
-      .callsFake(() =>
-        Promise.resolve({ supportsInterface: supportsInterfaceStub }),
-      );
+    const stub = stubCreateEthers(tokensController, false);
 
     const tokenBalances = new TokenBalancesController(
       {
-        onTokensStateChange: (listener) => tokensController.subscribe(listener),
+        onTokensStateChange: (listener) => tokensController.subscribe(listener), // needs to be unsubbed?
         getSelectedAddress: () => preferences.state.selectedAddress,
         getERC20BalanceOf:
           assetsContract.getERC20BalanceOf.bind(assetsContract),
@@ -220,6 +247,9 @@ describe('TokenBalancesController', () => {
     const found = tokens.filter((token: Token) => token.address === '0x00');
     expect(found.length > 0).toBe(true);
     expect(updateBalances.called).toBe(true);
+
+    stub.restore();
+    messenger.clearEventSubscriptions('NetworkController:stateChange');
   });
 
   it('should update token balances when detected tokens are added', async () => {
@@ -241,7 +271,7 @@ describe('TokenBalancesController', () => {
     expect(tokenBalances.state.contractBalances).toStrictEqual({});
 
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    await tokenStateChangeListener!({
+    tokenStateChangeListener!({
       detectedTokens: [
         {
           address: '0x02',

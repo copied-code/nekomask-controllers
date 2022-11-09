@@ -1,6 +1,6 @@
 {
   "name": "@hulohot/controllers",
-  "version": "30.0.2",
+  "version": "33.0.0",
   "description": "Collection of platform-agnostic modules for creating secure data models for cryptocurrency wallets",
   "keywords": [
     "MetaMask",
@@ -28,17 +28,24 @@
     "lint": "yarn lint:eslint && yarn lint:misc --check",
     "lint:eslint": "eslint . --cache --ext js,ts",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:misc --write",
-    "lint:misc": "prettier '**/*.json' '**/*.md' '!CHANGELOG.md' '**/*.yml' --ignore-path .gitignore",
-    "prepublishOnly": "yarn build",
-    "setup": "yarn install && yarn allow-scripts",
+    "lint:misc": "prettier '**/*.json' '**/*.md' '!CHANGELOG.md' '**/*.yml' '!.yarnrc.yml' --ignore-path .gitignore",
+    "prepack": "./scripts/prepack.sh",
+    "setup": "yarn install",
     "test": "jest",
+    "test:debug": "yarn run --inspect-brk jest --runInBand",
     "test:watch": "jest --watch"
+  },
+  "simple-git-hooks": {
+    "pre-push": "yarn lint"
   },
   "dependencies": {
     "@ethereumjs/common": "^2.3.1",
     "@ethereumjs/tx": "^3.2.1",
+    "@ethersproject/abi": "^5.7.0",
+    "@ethersproject/contracts": "^5.7.0",
+    "@ethersproject/providers": "^5.7.0",
     "@hulohot/eth-keyring-controller": "^7.0.4",
-    "@keystonehq/metamask-airgapped-keyring": "^0.3.0",
+    "@keystonehq/metamask-airgapped-keyring": "^0.6.1",
     "@metamask/contract-metadata": "^1.35.0",
     "@metamask/metamask-eth-abis": "3.0.0",
     "@metamask/types": "^1.1.0",
@@ -56,7 +63,6 @@
     "eth-sig-util": "^3.0.0",
     "ethereumjs-util": "^7.0.10",
     "ethereumjs-wallet": "^1.0.1",
-    "ethers": "^5.4.1",
     "ethjs-unit": "^0.1.6",
     "fast-deep-equal": "^3.1.3",
     "immer": "^9.0.6",
@@ -104,14 +110,16 @@
     "prettier": "^2.6.2",
     "prettier-plugin-packagejson": "^2.2.17",
     "rimraf": "^3.0.2",
+    "simple-git-hooks": "^2.8.0",
     "sinon": "^9.2.4",
     "ts-jest": "^26.5.2",
     "typedoc": "^0.22.15",
     "typedoc-plugin-missing-exports": "^0.22.6",
     "typescript": "~4.6.3"
   },
+  "packageManager": "yarn@3.2.1",
   "engines": {
-    "node": ">=12.0.0"
+    "node": ">=14.0.0"
   },
   "publishConfig": {
     "access": "public",
@@ -127,7 +135,7 @@
       "eth-sig-util>ethereumjs-util>secp256k1": true,
       "ethereumjs-util>ethereum-cryptography>keccak": true,
       "ethereumjs-util>ethereum-cryptography>secp256k1": true,
-      "$root$": false
+      "simple-git-hooks": false
     }
   }
 }
